@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leaf Scan · Potato Disease Detector</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+  <header class="site-head">
+    <span class="tag-mark">◈</span>
+    <h1>Leaf&nbsp;Scan</h1>
+    <p class="site-sub">Field diagnostics for potato plants</p>
+  </header>
+
+  <main class="stage">
+
+    <section class="scanner" id="scanner">
+      <div class="corner tl"></div>
+      <div class="corner tr"></div>
+      <div class="corner bl"></div>
+      <div class="corner br"></div>
+
+      <img id="preview" class="preview-img" alt="Uploaded leaf preview" hidden>
+
+      <div class="scanner-empty" id="scannerEmpty">
+        <p class="scanner-icon">🥔</p>
+        <p class="scanner-text">Drop a leaf photo here</p>
+        <p class="scanner-text-sub">or choose a file below</p>
+      </div>
+
+      <div class="scan-line" id="scanLine" hidden></div>
+    </section>
+
+    <form id="uploadForm" class="controls">
+      <label class="file-btn">
+        Choose photo
+        <input type="file" id="fileInput" name="file" accept="image/png, image/jpeg" hidden>
+      </label>
+      <button type="submit" class="submit-btn" id="submitBtn" disabled>Diagnose</button>
+    </form>
+
+    <p class="error" id="errorMsg" hidden></p>
+
+    <section class="report" id="report" hidden>
+      <div class="report-head">
+        <span class="report-label">Field Report</span>
+        <span class="stamp" id="stamp">—</span>
+      </div>
+      <dl class="report-body">
+        <dt>Diagnosis</dt>
+        <dd id="resultClass">—</dd>
+        <dt>Confidence</dt>
+        <dd id="resultConfidence">—</dd>
+      </dl>
+    </section>
+
+  </main>
+
+  <footer class="site-foot">
+    <p>Trained on potato leaf imagery · early blight · late blight · healthy</p>
+  </footer>
+
+<script>
+  const fileInput = document.getElementById('fileInput');
+  const submitBtn = document.getElementById('submitBtn');
+  const uploadForm = document.getElementById('uploadForm');
+  const preview = document.getElementById('preview');
+  const scannerEmpty = document.getElementById('scannerEmpty');
+  const scanLine = document.getElementById('scanLine');
+  const report = document.getElementById('report');
+  const errorMsg = document.getElementById('errorMsg');
+  const resultClass = document.getElementById('resultClass');
+  const resultConfidence = document.getElementById('resultConfidence');
+  const stamp = document.getElementById('stamp');
+
+  const LABELS = {
+    'Potato___Early_blight': { text: 'Early blight', tone: 'warn' },
+    'Potato___Late_blight':  { text: 'Late blight',  tone: 'danger' },
+    'Potato___healthy':      { text: 'Healthy',       tone: 'good' }
+  };
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files[0];
+    report.hidden = true;
+    errorMsg.hidden = true;
+    if (!file) {
+      submitBtn.disabled = true;
+      return;
+    }
+    submitBtn.disabled = false;
+    const reader = new FileReader();
+    reader.onload = e => {
+      preview.src = e.target.result;
+      preview.hidden = false;
+      scannerEmpty.hidden = true;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    errorMsg.hidden = true;
+    report.hidden = true;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Scanning…';
+    scanLine.hidden = false;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/predict', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Something went wrong');
+      }
+
+      const info = LABELS[data.class] || { text: data.class, tone: 'good' };
+      resultClass.textContent = info.text;
+      resultConfidence.textContent = data.confidence + '%';
+      stamp.textContent = info.tone === 'good' ? 'CLEAR' : info.tone === 'warn' ? 'CAUTION' : 'ALERT';
+      stamp.className = 'stamp ' + info.tone;
+      report.hidden = false;
+    } catch (err) {
+      errorMsg.textContent = err.message;
+      errorMsg.hidden = false;
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Diagnose';
+      scanLine.hidden = true;
+    }
+  });
+
+  // Drag and drop support
+  const scanner = document.getElementById('scanner');
+  ['dragover', 'dragleave', 'drop'].forEach(evt => {
+    scanner.addEventListener(evt, e => e.preventDefault());
+  });
+  scanner.addEventListener('dragover', () => scanner.classList.add('dragging'));
+  scanner.addEventListener('dragleave', () => scanner.classList.remove('dragging'));
+  scanner.addEventListener('drop', (e) => {
+    scanner.classList.remove('dragging');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      fileInput.files = e.dataTransfer.files;
+      fileInput.dispatchEvent(new Event('change'));
+    }
+  });
+</script>
+
+</body>
+</html>
